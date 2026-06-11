@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="mrbd-web-app-capable" content="yes">
+<meta name="viewport" content="width=600, height=600">
+<title>Castle Siege — Phase 0 spike</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+  /* Pure black everywhere — on the glasses' additive display, #000 is transparent. */
+  html, body { margin: 0; padding: 0; background: #000; }
+  body { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  #stage {
+    position: relative; width: 600px; height: 600px; margin: 0 auto;
+    background: #000; overflow: hidden;
+  }
+  #screenName {
+    position: absolute; top: 16px; left: 0; width: 100%;
+    text-align: center; font-size: 26px; font-weight: bold; color: #ffd700;
+    z-index: 10; pointer-events: none;
+  }
+  #hint {
+    position: absolute; bottom: 16px; left: 0; width: 100%;
+    text-align: center; font-size: 16px; color: #999;
+    z-index: 10; pointer-events: none;
+  }
+  .screen { position: absolute; inset: 0; display: none; }
+  .screen.active { display: block; }
+  canvas { position: absolute; top: 0; left: 0; image-rendering: pixelated; }
+
+  /* Screen A */
+  #counters { position: absolute; top: 56px; left: 16px; right: 16px;
+              font-size: 22px; color: #7fffd4; line-height: 1.35;
+              white-space: pre; }
+  #enterGap { position: absolute; top: 122px; left: 16px; right: 16px;
+              font-size: 22px; color: #ff8c4b; }
+  #escNote  { position: absolute; top: 152px; left: 16px; right: 16px;
+              font-size: 16px; color: #999; }
+  #eventLog { position: absolute; top: 186px; left: 16px; right: 16px;
+              font-size: 20px; color: #fff; line-height: 1.7; white-space: pre; }
+  #eventLog .kd { color: #fff; }  #eventLog .ku { color: #9bd4ff; }
+  #eventLog .wh { color: #ff5e5e; } #eventLog .pt { color: #ffe44b; }
+  #eventLog .tc { color: #d48bff; }
+
+  /* Screen B */
+  #benchStats { position: absolute; top: 52px; left: 16px;
+                font-size: 24px; color: #7fffd4; line-height: 1.4;
+                z-index: 5; text-shadow: 0 0 4px #000; white-space: pre; }
+  #benchHint  { position: absolute; top: 168px; left: 16px;
+                font-size: 16px; color: #999; z-index: 5; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="screenName"></div>
+  <div id="hint">pinch (Enter) = next screen · A→B→C</div>
+
+  <section id="screenA" class="screen">
+    <div id="counters"></div>
+    <div id="enterGap">Enter ↓→↑ gap: —</div>
+    <div id="escNote">middle-pinch (Esc): just logged below — note if it exits the app</div>
+    <div id="eventLog"></div>
+  </section>
+
+  <section id="screenB" class="screen">
+    <canvas id="benchCanvas" width="600" height="600"></canvas>
+    <div id="benchStats">starting…</div>
+    <div id="benchHint">swipe (any arrow) = re-fire ball + reset min/max</div>
+  </section>
+
+  <section id="screenC" class="screen">
+    <canvas id="cardCanvas" width="600" height="600"></canvas>
+  </section>
+</div>
+
+<script src="../vendor/matter.min.js"></script>
+<script>
+// @ts-check
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------------------------------------------------------------- screens */
+  var SCREENS = [
+    { id: 'screenA', name: 'A — EVENT LOGGER' },
+    { id: 'screenB', name: 'B — PHYSICS BENCHMARK' },
+    { id: 'screenC', name: 'C — LEGIBILITY CARD' }
+  ];
+  var active = 0;
+
+  function setScreen(i) {
+    active = i;
+    SCREENS.forEach(function (s, k) {
+      $(s.id).classList.toggle('active', k === i);
+    });
+    $('screenName').textContent = SCREENS[i].name;
+    if (i === 1 && !bench) initBench();
+    if (i === 2 && !cardDrawn) { drawCard(); cardDrawn = true; }
+  }
+
+  /* ----------------------------------------------------- A — event logger */
+  // Everything is recorded globally (even while on screens B/C) so the
+  // pinch/twist test scripts keep collecting data while Enter cycles screens.
+  var counters = { keydown: 0, keyup: 0, wheel: 0,
+                   pointerdown: 0, pointerup: 0, pointermove: 0,
+                   touchstart: 0, touchend: 0 };
+  var logLines = [];           // newest first, max 8: [cssClass, text]
+  var lastEvtAt = null;
+  var enterDownAt = null;
+  var enterGaps = [];          // last 6 keydown→keyup gaps, ms
+
+  function dPrev() {
+    var now = performance.now();
+    var d = lastEvtAt === null ? '—' : Math.round(now - lastEvtAt) + 'ms';
+    lastEvtAt = now;
+    return d;
+  }
+
+  function record(cls, type, text) {
+    counters[type]++;
+    logLines.unshift([cls, text]);
+    if (logLines.length > 8) logLines.length = 8;
+    renderLogger();
+  }
+
+  function renderLogger() {
+    $('counters').textContent =
+      'kdown:' + counters.keydown + '  kup:' + counters.keyup +
+      '  wheel:' + counters.wheel + '\n' +
+      'ptr d/u/m:' + counters.pointerdown + '/' + counters.pointerup + '/' +
+      counters.pointermove + '  touch s/e:' + counters.touchstart + '/' +
+      counters.touchend;
+    $('eventLog').textContent = '';
+    logLines.forEach(function (l) {
+      var div = document.createElement('div');
+      div.className = l[0];
+      div.textContent = l[1];
+      $('eventLog').appendChild(div);
+    });
+  }
+
+  function renderEnterGap() {
+    $('enterGap').textContent = 'Enter ↓→↑ gap: ' +
+      (enterGaps.length ? enterGaps.join(', ') + ' ms' : '—') +
+      (enterDownAt !== null ? '  (keyup pending…)' : '');
+  }
+
+  window.addEventListener('keydown', function (e) {
+    if (e.key.indexOf('Arrow') === 0) e.preventDefault(); // no desktop scroll
+    record('kd', 'keydown', '[keydown] ' + e.key + '/' + e.code +
+                 ' r:' + e.repeat + ' Δ:' + dPrev());
+    if (e.key === 'Enter') {
+      if (enterDownAt === null) enterDownAt = performance.now();
+      renderEnterGap();
+      if (!e.repeat) setScreen((active + 1) % SCREENS.length);
+    }
+    if (active === 1 && e.key.indexOf('Arrow') === 0 && !e.repeat) fireBall();
+  });
+  window.addEventListener('keyup', function (e) {
+    record('ku', 'keyup', '[keyup] ' + e.key + '/' + e.code + ' Δ:' + dPrev());
+    if (e.key === 'Enter' && enterDownAt !== null) {
+      enterGaps.push(Math.round(performance.now() - enterDownAt));
+      if (enterGaps.length > 6) enterGaps.shift();
+      enterDownAt = null;
+      renderEnterGap();
+    }
+  });
+  window.addEventListener('wheel', function (e) {
+    record('wh', 'wheel', '[wheel] dX:' + Math.round(e.deltaX) +
+                 ' dY:' + Math.round(e.deltaY) + ' Δ:' + dPrev());
+  }, { passive: true });
+  ['pointerdown', 'pointerup', 'pointermove'].forEach(function (t) {
+    window.addEventListener(t, function (e) {
+      record('pt', t, '[' + t + '] ' + e.pointerType + ' (' +
+                   Math.round(e.clientX) + ',' + Math.round(e.clientY) +
+                   ') Δ:' + dPrev());
+    });
+  });
+  ['touchstart', 'touchend'].forEach(function (t) {
+    window.addEventListener(t, function (e) {
+      record('tc', t, '[' + t + '] n:' + e.touches.length + ' Δ:' + dPrev());
+    }, { passive: true });
+  });
+
+  /* ----------------------------------------- B — matter.js 50-box benchmark */
+  var STEP_MS = 1000 / 60;       // fixed 60 Hz physics, as per SPEC §5.1
+  var bench = null;
+
+  function initBench() {
+    var M = window.Matter;
+    var engine = M.Engine.create({
+      enableSleeping: true,
+      positionIterations: 6,
+      velocityIterations: 4
+    });
+    var statics = [
+      M.Bodies.rectangle(300, 592, 600, 16, { isStatic: true }),  // ground
+      M.Bodies.rectangle(-8, 300, 16, 600, { isStatic: true }),   // walls
+      M.Bodies.rectangle(608, 300, 16, 600, { isStatic: true })
+    ];
+    M.Composite.add(engine.world, statics);
+
+    // 50 stacked boxes: 5 towers × 10
+    var BOX = 24;
+    for (var t = 0; t < 5; t++) {
+      for (var j = 0; j < 10; j++) {
+        M.Composite.add(engine.world, M.Bodies.rectangle(
+          250 + t * 70, 584 - BOX / 2 - j * BOX, BOX, BOX,
+          { friction: 0.6 }
+        ));
+      }
+    }
+    var ball = M.Bodies.circle(60, 430, 20, {
+      density: 0.05, restitution: 0.2, frictionAir: 0
+    });
+    M.Composite.add(engine.world, ball);
+
+    bench = {
+      M: M, engine: engine, ball: ball,
+      ctx: $('benchCanvas').getContext('2d'),
+      lastT: null, acc: 0,
+      frames: 0, statsAt: performance.now(),
+      fps: 0, minFps: Infinity,
+      stepSum: 0, stepN: 0, stepMax: 0
+    };
+    fireBall();
+  }
+
+  function fireBall() {
+    if (!bench) return;
+    var M = bench.M;
+    M.Sleeping.set(bench.ball, false);
+    M.Body.setPosition(bench.ball, { x: 60, y: 430 });
+    M.Body.setAngularVelocity(bench.ball, 0);
+    M.Body.setVelocity(bench.ball, { x: 24, y: -11 });
+    bench.minFps = Infinity;                 // fresh min/max per shot
+    bench.stepMax = 0;
+  }
+
+  function benchFrame(t) {
+    var b = bench;
+    if (b.lastT === null) { b.lastT = t; return; }
+    var dt = Math.min(t - b.lastT, 250);
+    b.lastT = t;
+    b.frames++;
+    b.acc += dt;
+    var n = 0;
+    while (b.acc >= STEP_MS && n < 5) {       // cap: no spiral of death
+      var s0 = performance.now();
+      b.M.Engine.update(b.engine, STEP_MS);
+      var ms = performance.now() - s0;
+      b.stepSum += ms; b.stepN++;
+      if (ms > b.stepMax) b.stepMax = ms;
+      b.acc -= STEP_MS; n++;
+    }
+    if (n === 5) b.acc = 0;
+    drawBench();
+    if (t - b.statsAt >= 1000) {
+      var fps = b.frames * 1000 / (t - b.statsAt);
+      if (fps < b.minFps) b.minFps = fps;
+      var awake = b.M.Composite.allBodies(b.engine.world).filter(function (x) {
+        return !x.isStatic && !x.isSleeping;
+      }).length;
+      $('benchStats').textContent =
+        'rAF: ' + fps.toFixed(1) + ' fps (min ' + b.minFps.toFixed(1) + ')\n' +
+        'step: ' + (b.stepN ? (b.stepSum / b.stepN).toFixed(2) : '0') +
+        ' ms avg / ' + b.stepMax.toFixed(2) + ' ms max\n' +
+        'bodies awake: ' + awake;
+      b.frames = 0; b.stepSum = 0; b.stepN = 0; b.statsAt = t;
+    }
+  }
+
+  function drawBench() {
+    var ctx = bench.ctx;
+    ctx.clearRect(0, 0, 600, 600);
+    bench.M.Composite.allBodies(bench.engine.world).forEach(function (body) {
+      var v = body.vertices;
+      ctx.beginPath();
+      ctx.moveTo(v[0].x, v[0].y);
+      for (var i = 1; i < v.length; i++) ctx.lineTo(v[i].x, v[i].y);
+      ctx.closePath();
+      if (body.isStatic)            { ctx.fillStyle = '#333'; ctx.strokeStyle = '#888'; }
+      else if (body === bench.ball) { ctx.fillStyle = '#c81818'; ctx.strokeStyle = '#ff5e4b'; }
+      else if (body.isSleeping)     { ctx.fillStyle = '#6b4513'; ctx.strokeStyle = '#a87a3e'; }
+      else                          { ctx.fillStyle = '#b06820'; ctx.strokeStyle = '#ffaa33'; }
+      ctx.lineWidth = 2;
+      ctx.fill();
+      ctx.stroke();
+    });
+  }
+
+  /* -------------------------------------------------- C — legibility card */
+  var cardDrawn = false;
+
+  // Planned palette (SPEC §5.2: bright fills + bright 1-logical-px outlines)
+  var PALETTE = [
+    { name: 'wood',  fill: '#b06820', line: '#ffaa33' },
+    { name: 'stone', fill: '#6e7f8e', line: '#b8c8d8' },
+    { name: 'glass', fill: '#18b2c8', line: '#66ffff' },
+    { name: 'tnt',   fill: '#c81818', line: '#ff5e4b' },
+    { name: 'defndr', fill: '#c818a0', line: '#ff55dd' }
+  ];
+
+  // One 8-logical-px block with a 1-logical-px outline, at integer scale s.
+  function swatch(ctx, x, y, s, p) {
+    ctx.fillStyle = p.line;
+    ctx.fillRect(x, y, 8 * s, 8 * s);
+    ctx.fillStyle = p.fill;
+    ctx.fillRect(x + s, y + s, 6 * s, 6 * s);
+  }
+
+  function dial(ctx, cx, cy, r, filled, label, labelPx) {
+    for (var i = 0; i < 10; i++) {
+      var a0 = -Math.PI / 2 + i * Math.PI * 2 / 10 + 0.06;
+      var a1 = -Math.PI / 2 + (i + 1) * Math.PI * 2 / 10 - 0.06;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, a0, a1);
+      ctx.lineWidth = Math.max(4, r * 0.22);
+      ctx.strokeStyle = i < filled ? '#66ffff' : '#666';
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + labelPx + 'px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, cy);
+  }
+
+  function cornerCluster(ctx, x, y) {       // ~110 wide × 96 tall
+    swatch(ctx, x, y, 3, PALETTE[0]);
+    swatch(ctx, x + 28, y, 3, PALETTE[4]);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '20px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('20px text', x, y + 30);
+    dial(ctx, x + 26, y + 76, 18, 6, '6', 14);
+  }
+
+  function drawCard() {
+    var ctx = $('cardCanvas').getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 600, 600);
+
+    // 16 px safe-margin guide (SPEC §3.6)
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(16.5, 16.5, 567, 567);
+
+    // center: swatch rows at ×2 / ×3 / ×4
+    [{ s: 2, y: 74 }, { s: 3, y: 104 }, { s: 4, y: 146 }].forEach(function (row) {
+      ctx.fillStyle = '#fff';
+      ctx.font = '20px ui-monospace, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText('x' + row.s, 158, row.y + 4 * row.s - 10);
+      PALETTE.forEach(function (p, i) {
+        swatch(ctx, 200 + i * (8 * row.s + 10), row.y, row.s, p);
+      });
+    });
+    ctx.fillStyle = '#aaa';
+    ctx.font = '16px ui-monospace, monospace';
+    ctx.fillText('wood stone glass tnt defender (8px blocks)', 158, 186);
+
+    // center: HUD text samples at 16 / 20 / 24 device px
+    ctx.fillStyle = '#ffd700';
+    [{ px: 16, y: 222 }, { px: 20, y: 248 }, { px: 24, y: 280 }].forEach(function (t) {
+      ctx.font = t.px + 'px ui-monospace, monospace';
+      ctx.fillText('HUD ' + t.px + 'px 4200 · 45° · ●●●○', 140, t.y);
+    });
+
+    // center: power-dial mock + angle readout
+    dial(ctx, 270, 392, 40, 6, '6', 24);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '24px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('45°↗', 330, 380);
+
+    // corners, flush inside the 16 px margin
+    cornerCluster(ctx, 20, 20);          // top-left
+    cornerCluster(ctx, 474, 20);         // top-right
+    cornerCluster(ctx, 20, 486);         // bottom-left
+    cornerCluster(ctx, 474, 486);        // bottom-right
+  }
+
+  /* ------------------------------------------------------------ main loop */
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (active === 1 && bench) benchFrame(t);
+    else if (bench) bench.lastT = null;   // pause physics while off-screen
+  }
+
+  renderLogger();
+  setScreen(0);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
