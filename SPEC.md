@@ -141,15 +141,22 @@ There are no control modes. Every gesture always does the same thing during aimi
 | Gesture | Event | Aim phase | Menus/overlays |
 |---|---|---|---|
 | Swipe up / down | ArrowUp/Down | **Angle** +5° / −5° (clamped 10°–80°) | Focus prev / next |
-| Swipe left / right | ArrowLeft/Right | **Power** dial −1 / +1 (10 steps) | Focus left / right |
+| Swipe left / right | ArrowLeft/Right | **Power** −1 / +1 (10 steps) | Focus left / right |
 | Pinch | Enter | **Fire** | Activate focused item |
 | Middle pinch | Escape | Pause overlay | Back |
 
 - 15 angle steps × 10 power steps; worst case ~12 swipes to reach any aim. All steps
   are discrete (see §2.2).
-- **Power dial UI**: a circular dial next to the catapult, deliberately mimicking the
-  system volume dial that users already know from pinch+twist. If Phase 0 finds twist
-  leakage, twist becomes a second input binding to the same dial — UI unchanged.
+- **Power slider UI**: a horizontal **pill-shaped track** beside the catapult. The
+  **filled portion** (from the left end up to the knob) is the value *indicator* and
+  carries a **green→red gradient anchored across the whole track** (green at the low/left
+  end → red at the high/right end), so the fill's leading-edge color signals shot
+  strength; the unfilled remainder is a dim track. A **circular knob** rides at the fill's
+  leading edge — the knob is a single neutral color, since the gradient lives on the fill,
+  not the knob. The power number sits beside the track. Swipe left/right moves the knob
+  (left = weaker, right = stronger), matching the gesture direction. (Drop shadows are
+  omitted — dark pixels are invisible on the additive display, §2.1.) If Phase 0 finds
+  twist leakage, twist becomes a second input binding to the same slider — UI unchanged.
 - **Trajectory preview**: dotted preview of the first ~40% of the flight arc, updated
   live while aiming. MUST be computed from the same physics constants as the
   simulation (gravity, launch velocity from power step) — not a separate approximation.
@@ -229,9 +236,11 @@ stateDiagram-v2
 
 ### 4.2 Gameplay HUD
 
-- Top-left: score. Top-right: remaining projectiles (boulder icons).
+- Top-left: score. Top-right: remaining projectiles as a `SHOTS left/total` readout
+  (e.g. `SHOTS 3/3`).
 - Bottom-left, beside the catapult: **angle readout** (e.g. `45°` with a short direction
-  tick) and the **power dial** (circular, 10 segments).
+  tick) and the **power slider** (horizontal pill track, 10 steps; green→red gradient fill
+  as the value indicator; circular knob).
 - All HUD elements ≥20 device px, inside the 16 px safe margin.
 
 ---
@@ -282,7 +291,7 @@ src/input.js                # input abstraction (§5.4)
 src/screens.js              # screen stack + focus management
 src/game.js                 # gameplay state machine (Aim/Flight/Settle/Result)
 src/physics.js              # matter.js world, materials, damage, TNT
-src/render.js               # canvas renderer (world, dial, trajectory, HUD)
+src/render.js               # canvas renderer (world, power slider, trajectory, HUD)
 src/levels/index.js         # export const LEVELS = [...]
 src/levels/level01.js …     # one module per zone
 src/storage.js              # localStorage wrapper, versioned schema
