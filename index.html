@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<!-- index.html — the single page that loads the game. -->
+<html lang="en">
+<head>
+  <!-- Use the standard Unicode character set. -->
+  <meta charset="utf-8">
+
+  <!-- Tell the Meta Ray-Ban Display this page is a full web app, not a web page. (SPEC §2.1) -->
+  <meta name="mrbd-web-app-capable" content="yes">
+
+  <!-- Lock the drawing area to the glasses' fixed 600×600 viewport. (SPEC §2.1) -->
+  <meta name="viewport" content="width=600, height=600">
+
+  <!-- The window/app title. -->
+  <title>Castle Siege</title>
+
+  <!-- Link the web-app manifest (name, icon, standalone display). (SPEC §2.1) -->
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <!-- A PNG favicon (≥52×52). The platform requires PNG, not SVG. (SPEC §2.1) -->
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <style>
+    /* Pure black everywhere: on the glasses' additive display, #000 is invisible,
+       so black is the correct "empty" background. (SPEC §2.1) */
+    html, body {
+      margin: 0;            /* remove the browser's default page margin */
+      padding: 0;           /* remove default padding */
+      background: #000;     /* pure black */
+      height: 100%;         /* let the body fill the window */
+    }
+
+    /* Center the 600×600 game stage in the desktop dev window. */
+    body {
+      display: flex;                 /* use flexbox to center the canvas */
+      align-items: center;           /* center vertically */
+      justify-content: center;       /* center horizontally */
+    }
+
+    /* The one canvas we draw the whole game scene into. */
+    #game {
+      width: 600px;                  /* show it at the true 600×600 device size */
+      height: 600px;
+      image-rendering: pixelated;    /* if ever upscaled, keep pixels crisp, not blurry */
+      background: #000;              /* black behind the canvas too */
+    }
+  </style>
+</head>
+<body>
+  <!-- The game scene is canvas-only; menus/overlays will use DOM later. (SPEC §5.2) -->
+  <canvas id="game" width="600" height="600"></canvas>
+
+  <!-- Load our code as an ES module (type="module"). This is the program's entry point. -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
