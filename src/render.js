@@ -131,6 +131,101 @@ export function createRenderer(canvas) {
     ctx.fillText(str, x, y);
   }
 
+  /**
+   * line — draw a straight line in DEVICE pixels (used for the aim direction tick).
+   * @param {number} x1 - start x (device px).
+   * @param {number} y1 - start y (device px).
+   * @param {number} x2 - end x (device px).
+   * @param {number} y2 - end y (device px).
+   * @param {string} color - any CSS color.
+   * @param {number} width - line thickness in device px.
+   */
+  function line(x1, y1, x2, y2, color, width) {
+    // Set the stroke color and thickness.
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    // Round the ends so the short tick looks clean.
+    ctx.lineCap = 'round';
+    // Trace the line and paint it.
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  /**
+   * powerSlider — draw the horizontal power control beside the catapult, in DEVICE
+   * pixels. Shape echoes a familiar phone-style slider (SPEC §3.3, updated):
+   *   • a PILL-SHAPED track (a capsule with rounded ends),
+   *   • a FILLED portion from the left end up to the knob — this is the value "indicator",
+   *     painted with a green→red gradient anchored across the WHOLE track (green at the
+   *     low end, red at the high end), so the fill's leading-edge color tells you how
+   *     hard the shot will fly,
+   *   • the unfilled remainder shown as a dim track,
+   *   • a CIRCULAR knob — a single neutral color, since the gradient lives on the fill,
+   *     not the knob — sitting at the fill's leading edge.
+   * (No drop shadow: dark pixels are invisible on the glasses' additive display, §2.1.)
+   * @param {number} x0 - the knob's LEFT-most center x (device px) = lowest power.
+   * @param {number} x1 - the knob's RIGHT-most center x (device px) = highest power.
+   * @param {number} y  - the track's vertical center (device px).
+   * @param {number} power - the current power notch (1..total).
+   * @param {number} total - how many power notches there are (10).
+   */
+  function powerSlider(x0, x1, y, power, total) {
+    // Fraction 0..1 of how far along the track the knob sits.
+    // (power − 1) / (total − 1): power 1 → 0 (far left), power 10 → 1 (far right).
+    const t = total > 1 ? (power - 1) / (total - 1) : 0;
+    // The knob's center x: from x0 (lowest), walk t of the way toward x1 (highest).
+    const handleX = x0 + t * (x1 - x0);
+
+    // Track half-thickness, and the knob's radius (bigger than the track, so the knob
+    // overlaps and hides the rounded cap at the fill's leading edge).
+    const trackR = 6;   // pill is 12 device px thick
+    const knobR = 11;   // knob is 22 device px across
+
+    // Small helper: trace a pill (capsule) path between two cap centers xa..xb. roundRect
+    // with a corner radius equal to half the height turns the ends into clean semicircles.
+    const pill = (xa, xb) => {
+      ctx.beginPath();
+      ctx.roundRect(xa - trackR, y - trackR, (xb - xa) + trackR * 2, trackR * 2, trackR);
+    };
+
+    // 1) The whole track, dim. Drawn first so the unfilled remainder shows on the right.
+    pill(x0, x1);
+    ctx.fillStyle = '#6a6a6a';
+    ctx.fill();
+
+    // 2) The green→red gradient, anchored to the FULL track (x0 = green … x1 = red), so a
+    //    given power always maps to the same color no matter how full the bar is.
+    const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+    grad.addColorStop(0, '#3aff3a');   // low power  → green
+    grad.addColorStop(0.5, '#ffe23a'); // mid power  → yellow
+    grad.addColorStop(1, '#ff3a3a');   // high power → red
+
+    // 3) The filled indicator: the pill from the left end up to the knob, painted with
+    //    that gradient. Its rounded right cap is tucked under the knob drawn next.
+    pill(x0, handleX);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // 4) The knob: a solid, neutral-white circle at the fill's leading edge, with a thin
+    //    bright ring so it reads clearly against both the fill and the black background.
+    ctx.beginPath();
+    ctx.arc(handleX, y, knobR, 0, Math.PI * 2);
+    ctx.fillStyle = '#f2f4ff';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+
+    // 5) The power number, just past the track's right end (clear of the dim ground band).
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 22px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(power), x1 + trackR + 12, y);
+  }
+
   // Hand back the raw context (for advanced use later) plus our friendly tools.
-  return { ctx, clear, block, dot, text };
+  return { ctx, clear, block, dot, text, line, powerSlider };
 }
