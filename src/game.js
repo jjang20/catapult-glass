@@ -22,8 +22,13 @@ export const ANGLE_STEP = 5;
 export const POWER_MIN = 1;
 export const POWER_MAX = POWER_STEPS; // 10, kept in sync with physics.js
 
-// FLASH_MS = how long the round-end bright flash lasts (milliseconds).
-const FLASH_MS = 380;
+// Round-end flash: a brief, GENTLE pulse — a single eased fade (never a strobe) that reads
+// as a soft cue rather than a harsh bright spike. Kept low-intensity and tinted (not white)
+// for anyone sensitive to light effects, and skipped entirely under "reduce motion".
+const FLASH_MS = 500;        // how long the pulse lasts (ms)
+const FLASH_PEAK = 0.22;     // peak opacity (gentle; replaces the old harsh 0.8 white)
+const FLASH_WIN = '#7dff7d'; // soft green tint on a win
+const FLASH_LOSE = '#ff7d7d';// soft red tint on a loss
 // MAX_FLIGHT_MS = a safety cap: if a shot somehow never comes to rest, end it after this
 // long so the game can't get stuck (e.g. a body jittering forever).
 const MAX_FLIGHT_MS = 5000;
@@ -53,11 +58,18 @@ export function createGame() {
   // The real matter.js simulation (ground + tower + defender). Built once here.
   const world = createWorld();
 
-  // endRound — finish the shot: record win/lose, show the result, trigger the flash.
+  // Respect the player's system "reduce motion" preference (accessibility): when it's on,
+  // we skip the round-end pulse entirely. matchMedia may be missing in odd environments,
+  // so we guard for it (default = effect on).
+  const reduceMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // endRound — finish the shot: record win/lose, show the result, and start the gentle
+  // pulse (or none, under reduce-motion).
   function endRound(result) {
-    state.result = result;     // remember which message to show
-    state.phase = 'result';    // stop accepting aim input; wait for a restart
-    state.flash = FLASH_MS;    // kick off the bright flash
+    state.result = result;                       // remember which message to show
+    state.phase = 'result';                      // stop accepting aim input; wait for a restart
+    state.flash = reduceMotion ? 0 : FLASH_MS;   // kick off the soft pulse (skipped if reduce-motion)
   }
 
   return {
@@ -218,8 +230,13 @@ export function createGameplayScreen(game) {
           { size: 20, align: 'center', baseline: 'middle', color: '#ffffff' });
       }
 
-      // 8) The round-end flash, fading out (drawn last so it sits on top of everything).
-      if (state.flash > 0) r.flash((state.flash / FLASH_MS) * 0.8);
+      // 8) The round-end pulse: a single gentle, eased glow tinted to the result (no harsh
+      //    white spike). sin() ramps the opacity 0 → peak → 0, so there's no abrupt onset.
+      if (state.flash > 0) {
+        const e = 1 - state.flash / FLASH_MS;          // 0 → 1 across the pulse
+        const a = Math.sin(Math.PI * e) * FLASH_PEAK;  // smooth ease-in / ease-out bell
+        r.flash(a, state.result === 'win' ? FLASH_WIN : FLASH_LOSE);
+      }
     },
   };
 }
