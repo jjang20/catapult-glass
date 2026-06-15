@@ -37,6 +37,8 @@ export const PALETTE = {
   catapult: { fill: '#2f8f2f', outline: '#7dff7d' },
   // ground: dim grey — the floor things rest on (kept subtle on purpose).
   ground:   { fill: '#3a3a3a', outline: '#8a8a8a' },
+  // boulder: pale grey rock — the projectile you fire.
+  boulder:  { fill: '#9a9a9a', outline: '#e8e8e8' },
 };
 
 /**
@@ -226,6 +228,73 @@ export function createRenderer(canvas) {
     ctx.fillText(String(power), x1 + trackR + 12, y);
   }
 
+  /**
+   * bodyRect — draw a matter.js box body: a rectangle anchored at its CENTER and rotated
+   * to the body's angle (matter gives us center + angle, unlike block()'s top-left). Drawn
+   * outline-first then an inset fill, so it keeps the same bright 1-logical-px edge as block().
+   * @param {number} cx - body center x, logical px.
+   * @param {number} cy - body center y, logical px.
+   * @param {number} w - body width, logical px.
+   * @param {number} h - body height, logical px.
+   * @param {number} angle - rotation in radians (matter's body.angle).
+   * @param {{fill:string, outline:string}} colors - a PALETTE entry.
+   */
+  function bodyRect(cx, cy, w, h, angle, colors) {
+    // Save the canvas state so our move/rotate doesn't leak into later draws.
+    ctx.save();
+    // Move the canvas origin to the body's center (in device px), then rotate to its angle.
+    ctx.translate(cx * SCALE, cy * SCALE);
+    ctx.rotate(angle);
+    // Width/height in device px.
+    const W = w * SCALE, H = h * SCALE;
+    // Bright outline across the whole rectangle (centered on the new origin).
+    ctx.fillStyle = colors.outline;
+    ctx.fillRect(-W / 2, -H / 2, W, H);
+    // Fill inset by 1 logical px (SCALE) on every side, leaving the outline showing.
+    ctx.fillStyle = colors.fill;
+    ctx.fillRect(-W / 2 + SCALE, -H / 2 + SCALE, W - 2 * SCALE, H - 2 * SCALE);
+    // Restore the un-rotated, un-translated canvas.
+    ctx.restore();
+  }
+
+  /**
+   * bodyCircle — draw a round body (the boulder): a bright outline ring with an inset fill,
+   * centered on (cx, cy). In DEVICE px.
+   * @param {number} cx - center x, logical px.
+   * @param {number} cy - center y, logical px.
+   * @param {number} r - radius, logical px.
+   * @param {{fill:string, outline:string}} colors - a PALETTE entry.
+   */
+  function bodyCircle(cx, cy, r, colors) {
+    // Convert center + radius to device px.
+    const X = cx * SCALE, Y = cy * SCALE, R = r * SCALE;
+    // Outer disc in the outline color (the bright ring).
+    ctx.beginPath();
+    ctx.arc(X, Y, R, 0, Math.PI * 2);
+    ctx.fillStyle = colors.outline;
+    ctx.fill();
+    // Inner disc in the fill color, 1 logical px smaller, leaving a bright rim.
+    ctx.beginPath();
+    ctx.arc(X, Y, Math.max(0, R - SCALE), 0, Math.PI * 2);
+    ctx.fillStyle = colors.fill;
+    ctx.fill();
+  }
+
+  /**
+   * flash — paint a translucent white sheet over the whole screen (the round-end "flash").
+   * White is bright, so it reads on the additive display; alpha fades it out over time.
+   * @param {number} alpha - opacity 0..1 (0 = invisible, 1 = solid white).
+   */
+  function flash(alpha) {
+    // Save/restore so the temporary transparency doesn't affect other draws.
+    ctx.save();
+    // Clamp alpha into the valid 0..1 range for safety.
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, DEVICE, DEVICE);
+    ctx.restore();
+  }
+
   // Hand back the raw context (for advanced use later) plus our friendly tools.
-  return { ctx, clear, block, dot, text, line, powerSlider };
+  return { ctx, clear, block, dot, text, line, powerSlider, bodyRect, bodyCircle, flash };
 }

@@ -50,6 +50,11 @@
   <!-- The game scene is canvas-only; menus/overlays will use DOM later. (SPEC §5.2) -->
   <canvas id="game" width="600" height="600"></canvas>
 
+  <!-- Physics engine (matter.js), vendored and version-pinned (SPEC §5.1). This is a plain
+       (non-module) script: it sets a global `window.Matter` that our ES modules read. It is
+       listed BEFORE the module so the global is guaranteed ready when our code runs. -->
+  <script src="vendor/matter.min.js"></script>
+
   <!-- Load our code as an ES module (type="module"). This is the program's entry point. -->
   <script type="module" src="src/main.js"></script>
 </body>
