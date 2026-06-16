@@ -281,16 +281,18 @@ export function createRenderer(canvas) {
   }
 
   /**
-   * flash — paint a translucent white sheet over the whole screen (the round-end "flash").
-   * White is bright, so it reads on the additive display; alpha fades it out over time.
-   * @param {number} alpha - opacity 0..1 (0 = invisible, 1 = solid white).
+   * flash — paint a translucent sheet over the whole screen (the round-end "flash").
+   * Used as a single, gentle, eased pulse (not a strobe). The color is usually a soft
+   * tint; kept low-opacity so it reads as a glow, not a harsh spike, on the additive display.
+   * @param {number} alpha - opacity 0..1 (0 = invisible).
+   * @param {string} [color='#ffffff'] - any CSS color (the tint).
    */
-  function flash(alpha) {
+  function flash(alpha, color) {
     // Save/restore so the temporary transparency doesn't affect other draws.
     ctx.save();
     // Clamp alpha into the valid 0..1 range for safety.
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = color || '#ffffff';
     ctx.fillRect(0, 0, DEVICE, DEVICE);
     ctx.restore();
   }
