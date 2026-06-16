@@ -75,20 +75,25 @@ bright text ≥24 px. Current screen name always shown top-center.
 4. Fold findings back into SPEC.md (§2.2 input facts, §5.1 perf budget, §7 table) and
    close the Phase-0 GitHub issue with a summary.
 
-## 4. Findings (fill in on device)
+## 4. Findings (filled on device)
 
-> Status: **NOT YET RUN** · Device: __________ · Firmware/app versions: __________ · Date: __________
+> Status: **RUN — 2026-06-16** · Device: Meta Ray-Ban Display · Firmware/app versions: _(not recorded)_
 
 | # | Result (confirmed / disproved + details) |
 |---|---|
-| H1 | _pending_ — fps: ____ · avg step: ____ ms · max step: ____ ms |
-| H2 | _pending_ — repeat seen? ____ · events per swipe: ____ |
-| H3 | _pending_ — keydown→keyup gaps: ____ |
-| H4 | _pending_ — events during twist: ____ |
-| H5 | _pending_ — fps after 60 s idle: ____ · dimming? ____ |
-| H6 | _pending_ — readable scales: ____ · palette notes: ____ · corner notes: ____ |
+| H1 | **Physics ✓ · render fps lower than assumed.** Physics step is tiny — **0.45–0.50 ms avg, 0.80 ms max under load** (one-off 3.5 ms spike while idle) — far under the ≤4 ms budget. But the webview renders at **~29.9 fps (stable, min 29.9)**, not the assumed 60/90. The game still plays smoothly; our fixed-60 Hz accumulator already decouples physics from render rate. |
+| H2 | **Confirmed.** Swipes register reliably in every direction at any speed; no auto-repeat / multi-event problems seen. Discrete-step aiming holds. |
+| H3 | **Confirmed.** Quick pinch = `Enter`, reliable. A *held* pinch produces no identifiable extra event ("unidentified"). → keydown-only; no hold-to-charge. |
+| H4 | **Confirmed — twist unusable.** Pinch+twist drives the **system volume dial**; no app-visible events. Twist is system-reserved → **TwistSource dropped**, power stays on the slider + swipes. |
+| H5 | **Confirmed.** After idle, rAF keeps running — **no dimming or throttling**. The "swipe = skip to settle" contingency is **not needed**. |
+| H6 | **Mostly confirmed + tuning notes.** Text at **24 px** reads well. Fine pixel detail legible ~×2; in-game objects (blocks/defender) read better **larger** (~×4 object size). Glass **cyan slightly bright** but acceptable. Corners **not cut off**, but a **larger safe margin (~24–32 px)** is preferred (vs 16). |
+
+**Extra observation (not in H1–H6):** the **middle-finger pinch (Back/Escape) opens a system "Restart / Resume" menu** (Resume highlighted first) — the platform handles the back gesture with its own overlay. This affects the planned Escape = Pause (§3.3 / §4.1) and must be reconciled in Phase 2.
 
 ### Decisions taken from findings
 
-_(to be written after the run — e.g. "physics stays at 60 Hz", "TwistSource added/dropped",
-"art locked at ×3")_
+- **Physics stays at 60 Hz** — steps are sub-millisecond, so the 30 Hz fallback (§5.1) is unnecessary. Render is device-capped at ~30 fps; the fixed-timestep accumulator already handles it.
+- **TwistSource dropped** — twist is the system volume gesture; power stays on the swipe-driven slider.
+- **No "skip to settle"** — there is no dimming/throttling during the passive flight phase.
+- **Keydown-only input confirmed** — a held pinch is unreliable; nothing depends on `keyup`.
+- **Pending designer decision (Phase 2 / polish):** HUD safe margin → ~24–32 px; tone glass cyan down slightly; favor larger in-game blocks/defenders; the "remove screen border" request (needs clarification); reconcile Escape = Pause with the system Restart/Resume menu.
