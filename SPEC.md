@@ -77,12 +77,14 @@ The Neural Band translates gestures into keyboard events. Apps receive **only**:
 | Middle-finger pinch | `keydown` Escape (Back) |
 
 - **No touch, no pointer events.**
-- **The native pinch+twist dial gesture is system-reserved** (volume / camera zoom) and
-  is NOT exposed to apps. Raw EMG never leaves the band; only discrete events arrive.
-  Phase 0 experimentally checks for undocumented leakage (see `docs/spike-0-input-discovery.md`).
-- Swipe auto-repeat and pinch keyup semantics are **unverified** → all game tunables
-  MUST work with single discrete steps, and the design MUST NOT depend on `keyup`
-  (rule: **no hold-to-charge mechanics**).
+- **The native pinch+twist dial gesture is system-reserved** and is NOT exposed to apps.
+  Raw EMG never leaves the band; only discrete events arrive. **Verified in Phase 0:**
+  twisting only drove the **system volume dial** — no app-visible events — so the planned
+  `TwistSource` is **dropped**; power stays on the swipe-driven slider.
+- **Verified in Phase 0:** swipes arrive as single `keydown` events with **no auto-repeat**
+  (reliable in every direction and at any speed), and a *held* pinch yields no reliable
+  `keyup`/hold event. All tunables work in single discrete steps; the design MUST NOT
+  depend on `keyup` (rule: **no hold-to-charge mechanics**).
 - Continuous sensors that DO exist (glasses head IMU via DeviceOrientation/DeviceMotion,
   phone GPS) are **explicitly unused** by this game. Head-aiming was considered and
   rejected for comfort and precision reasons.
@@ -155,13 +157,18 @@ There are no control modes. Every gesture always does the same thing during aimi
   leading edge — the knob is a single neutral color, since the gradient lives on the fill,
   not the knob. The power number sits beside the track. Swipe left/right moves the knob
   (left = weaker, right = stronger), matching the gesture direction. (Drop shadows are
-  omitted — dark pixels are invisible on the additive display, §2.1.) If Phase 0 finds
-  twist leakage, twist becomes a second input binding to the same slider — UI unchanged.
+  omitted — dark pixels are invisible on the additive display, §2.1.) Phase 0 confirmed the
+  twist gesture is the **system volume dial** (no app events), so there is no twist binding —
+  power stays on swipes.
 - **Trajectory preview**: dotted preview of the first ~40% of the flight arc, updated
   live while aiming. MUST be computed from the same physics constants as the
   simulation (gravity, launch velocity from power step) — not a separate approximation.
-- During FLIGHT/SETTLE, input is ignored except Escape (pause). If Phase 0 finds the
-  display dims during no-input phases, a swipe during flight becomes "skip to settle".
+- During FLIGHT/SETTLE, input is ignored except Escape (pause). **Phase 0 confirmed no
+  display dimming/throttling during the passive flight phase, so the "skip to settle"
+  fallback is not needed.**
+- **Phase 0 note (platform):** the middle-pinch / Back gesture surfaces a **system
+  "Restart / Resume" menu** (Resume highlighted) rather than passing cleanly to the app —
+  the Phase 2 Pause overlay (§4.1) must reconcile with this system overlay (tracked as Q-11).
 
 ### 3.4 Materials and destruction
 
@@ -254,11 +261,14 @@ stateDiagram-v2
   biggest schedule risk — rejected. matter.js is ~26 KB gzip, battle-tested for exactly
   this genre, and loads from one file with no build step.
 - Physics steps at a **fixed 60 Hz** via an accumulator; rendering interpolates body
-  positions at whatever rAF rate the device provides (90 Hz target).
+  positions at whatever rAF rate the device provides. **Phase 0 measured ~30 fps on-device
+  (stable, min 29.9)** — not the 90 Hz panel rate — so decoupling physics from the render
+  rate (via this accumulator) is essential.
 - Sleeping enabled; solver iterations capped (`positionIterations: 6`,
   `velocityIterations: 4`); ≤25 dynamic bodies/level; no debris bodies.
-- Fallback knobs if the Phase-0 device benchmark fails: 30 Hz physics with
-  interpolation, lower iteration counts, lower body cap.
+- Fallback knobs if needed: 30 Hz physics, lower iteration counts, lower body cap.
+  **Phase 0 result:** physics steps measured **~0.5 ms (max 0.8 ms under load)** — far under
+  the ≤4 ms budget — so the 30 Hz-physics fallback is **not needed**; physics stays at 60 Hz.
 
 ### 5.2 Rendering: Canvas 2D, pixel-art pipeline
 
@@ -379,16 +389,17 @@ phone/desktop as supported play targets (dev-only).
 
 | # | Risk / question | Impact | Mitigation | Resolves |
 |---|---|---|---|---|
-| Q-1 | Glasses CPU/GPU budget unknown | Physics/render may not hit frame rate | Phase-0 on-device benchmark; fallback knobs §5.1 | Phase 0 |
-| Q-2 | Swipe auto-repeat unknown | Aiming feel | Design assumes none (discrete steps); repeat is a bonus | Phase 0 |
-| Q-3 | Pinch keyup/long-press semantics unknown | Would break hold mechanics | Rule: keydown-only design | Phase 0 |
-| Q-4 | Twist gesture leakage (wheel/repeat events?) | Could restore original control vision | Spike logs all events; `TwistSource` pluggable either way | Phase 0 |
-| Q-5 | rAF throttling / display dimming during passive flight | Game looks frozen | Spike logs rAF deltas; mitigation: swipe = skip-to-settle | Phase 0/5 |
+| Q-1 | Glasses CPU/GPU budget unknown | Physics/render may not hit frame rate | **Resolved (Phase 0):** physics ~0.5 ms/step (≪4 ms); render ~30 fps stable; 60 Hz physics kept | ✓ |
+| Q-2 | Swipe auto-repeat unknown | Aiming feel | **Resolved (Phase 0):** no auto-repeat; single discrete steps confirmed | ✓ |
+| Q-3 | Pinch keyup/long-press semantics unknown | Would break hold mechanics | **Resolved (Phase 0):** held pinch unreliable; keydown-only confirmed | ✓ |
+| Q-4 | Twist gesture leakage (wheel/repeat events?) | Could restore original control vision | **Resolved (Phase 0):** twist = system volume, no app events; `TwistSource` dropped | ✓ |
+| Q-5 | rAF throttling / display dimming during passive flight | Game looks frozen | **Resolved (Phase 0):** no dimming/throttling when idle; skip-to-settle not needed | ✓ |
 | Q-6 | Web Audio availability/policy on glasses webview | SFX may be impossible | Audio optional + feature-detected | Phase 4/5 |
 | Q-7 | localStorage persistence across relaunches | Progress loss | Wrapper degrades gracefully | Phase 5 |
 | Q-8 | Distribution/review timeline (URL-only today) | Reach | None needed for v1; track | — |
 | Q-9 | Toolkit/platform API drift (young platform) | Breakage | Re-verify meta-tag requirements at Phase 5 | Phase 5 |
 | Q-10 | In-game title | Branding | Decide before Phase 4 title art | Phase 4 |
+| Q-11 | Middle-pinch (Back) opens a system "Restart/Resume" menu | May clash with our Escape = Pause | Observed in Phase 0; Phase 2 pause UI must reconcile with the system overlay | Phase 2 |
 
 ---
 
