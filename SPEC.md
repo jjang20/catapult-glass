@@ -421,7 +421,7 @@ One GitHub issue per phase; each phase ends in a committable, demoable state.
 |---|---|---|
 | **0 — Input & perf discovery spike** | 1–2 | `spike/index.html`: on-screen event logger (key/code/repeat, keydown→keyup timing, wheel), rAF delta stats, matter.js 50-box stress test, pixel-art legibility card (×2/×3/×4). Deploy to GitHub Pages, run on glasses, fill `docs/spike-0-input-discovery.md`, fold findings into §2.2/§5.1/§7 |
 | **1 — Core loop prototype** | 2–3 | Scaffolding (meta tags, manifest), fixed-timestep loop, input abstraction, screen stack, one hardcoded zone with placeholder rectangles, aim UI (angle + dial + trajectory dots), launch/collisions, win/lose. Desktop-playable end to end |
-| **2 — Game systems** | 2–3 | Materials/damage + TNT, scoring/stars, level schema + loader, Title + Conquest Map screens, persistence, pause/result overlays |
+| **2 — Game systems** | 2–3 | Materials/damage + TNT, scoring/stars, level schema + loader, Title + Conquest Map screens, persistence, result overlay + platform-native pause |
 | **3 — Content & art** | 2–3 | Medieval spritesheet (catapult, blocks, defenders, King, map zones — designer collaboration; atlas format per §5.2), 8–10 zone levels, difficulty/star tuning |
 | **4 — Polish** | 1–2 | Particle bursts, dial/HUD juice, title art, optional SFX, favicon/manifest final |
 | **5 — Deploy & device validation** | 1–2 | GitHub Pages production deploy, QR onboarding, full on-device checklist (§5.7), fixes, tag `v1.0` |

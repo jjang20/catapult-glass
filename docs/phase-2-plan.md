@@ -3,7 +3,7 @@
 **Status:** interview complete — all 12 decisions (D1–D12) recorded. Ready for designer review.
 **Scope:** GitHub issue #3 ("Phase 2 — Game systems"): materials/damage + TNT,
 particle bursts, scoring/stars, level schema + loader, Title + Conquest-map screens,
-result/pause overlays, persistence, debug params, and `node --test` units.
+result overlay (pause is platform-native), persistence, debug params, and `node --test` units.
 
 This document is **additive** to [`SPEC.md`](../SPEC.md), which stays the normative design
 bible. Where SPEC already decides something, this plan points to it instead of
