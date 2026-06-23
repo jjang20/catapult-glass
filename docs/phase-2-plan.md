@@ -354,7 +354,7 @@ gracefully (treat as "leave the zone → back to the map") and **verify on-devic
 attempt to render a pause overlay on a gesture the OS intercepts; keeps desktop/device parity
 through the Visibility API.
 
-**Resolves Q-11.** **Requires SPEC updates (to make with go-ahead before building):** §3.3
+**Resolves Q-11.** **SPEC updates (applied in this PR):** §3.3
 input table (middle-pinch/Escape is the system Back/menu, not our "Pause overlay"), the §3.3
 flight-phase note, §4.1 (replace the Pause-overlay bullet + the `Gameplay → PauseOverlay`
 state edge with platform-native pausing — noting the fixed universal **Restart · Resume · Skip

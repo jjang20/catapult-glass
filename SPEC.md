@@ -145,7 +145,7 @@ There are no control modes. Every gesture always does the same thing during aimi
 | Swipe up / down | ArrowUp/Down | **Angle** +5° / −5° (clamped 10°–80°) | Focus prev / next |
 | Swipe left / right | ArrowLeft/Right | **Power** −1 / +1 (10 steps) | Focus left / right |
 | Pinch | Enter | **Fire** | Activate focused item |
-| Middle pinch | Escape | Pause overlay | Back |
+| Middle pinch | Escape | **System Back/pause menu** (OS-owned) | Back |
 
 - 15 angle steps × 10 power steps; worst case ~12 swipes to reach any aim. All steps
   are discrete (see §2.2).
@@ -163,12 +163,14 @@ There are no control modes. Every gesture always does the same thing during aimi
 - **Trajectory preview**: dotted preview of the first ~40% of the flight arc, updated
   live while aiming. MUST be computed from the same physics constants as the
   simulation (gravity, launch velocity from power step) — not a separate approximation.
-- During FLIGHT/SETTLE, input is ignored except Escape (pause). **Phase 0 confirmed no
-  display dimming/throttling during the passive flight phase, so the "skip to settle"
-  fallback is not needed.**
-- **Phase 0 note (platform):** the middle-pinch / Back gesture surfaces a **system
-  "Restart / Resume" menu** (Resume highlighted) rather than passing cleanly to the app —
-  the Phase 2 Pause overlay (§4.1) must reconcile with this system overlay (tracked as Q-11).
+- During FLIGHT/SETTLE, the app ignores all input; **pausing is OS-driven** — the system
+  Back/menu fires the platform `pause`/`resume`/`stop` lifecycle events (§4.1), not our Escape
+  handler. **Phase 0 confirmed no display dimming/throttling during the passive flight phase, so
+  the "skip to settle" fallback is not needed.**
+- **Phase 0 note (platform):** the middle-pinch / Back gesture surfaces the fixed system
+  **"universal Web App menu" (Restart · Resume · Skip Level)** rather than passing cleanly to the
+  app. **Resolved (Q-11):** the system menu *is* the pause — the app reacts to the platform
+  `pause`/`resume`/`stop` lifecycle events instead of drawing its own overlay (§4.1).
 
 ### 3.4 Materials and destruction
 
@@ -226,9 +228,7 @@ stateDiagram-v2
     Gameplay --> ResultOverlay : win / fail
     ResultOverlay --> Gameplay : Retry / Next zone
     ResultOverlay --> ConquestMap : Map
-    Gameplay --> PauseOverlay : Escape
-    PauseOverlay --> Gameplay : Resume
-    PauseOverlay --> ConquestMap : Quit to map
+    Gameplay --> ConquestMap : Quit to map (HUD button)
     ConquestMap --> Title : Escape
 ```
 
@@ -239,7 +239,13 @@ stateDiagram-v2
   locked inner zones are dimmed. D-pad navigable in a fixed focus order (outer → inner).
 - **Gameplay**: canvas scene with substates Aim → Flight → Settle → Result.
 - **Result overlay**: stars animation, score, Retry / Next / Map.
-- **Pause overlay**: Resume / Restart zone / Quit to map.
+- **Pause (platform-native)**: on the glasses the middle-pinch raises the fixed system
+  **"universal Web App menu" (Restart · Resume · Skip Level)** — the app draws **no** pause
+  overlay; it reacts to the platform **`pause` / `resume` / `stop`** lifecycle events (freeze the
+  loop on `pause`, continue on `resume`, reset the zone on `stop`). Desktop mirrors this via the
+  **Page Visibility API** (tab switch) for an identical code path. **"Quit to map"** — the one
+  action the system menu lacks — is an in-app **focusable HUD button** (pinch/Enter), never bound
+  to Back.
 
 ### 4.2 Gameplay HUD
 
@@ -373,6 +379,9 @@ behavior on the glasses webview is open question Q-7).
   5. localStorage persistence across app relaunch
   6. Display dimming during the no-input Flight phase
   7. Battery/thermal over a 10-minute session
+  8. System pinch menu: which items appear for our app, and what the `pause`/`resume`/`stop`
+     lifecycle events (and "Restart" / "Skip Level") actually deliver — confirm pause/resume
+     freezes and resumes the loop, and "Quit to map" works as a HUD button
 
 ---
 
@@ -399,7 +408,7 @@ phone/desktop as supported play targets (dev-only).
 | Q-8 | Distribution/review timeline (URL-only today) | Reach | None needed for v1; track | — |
 | Q-9 | Toolkit/platform API drift (young platform) | Breakage | Re-verify meta-tag requirements at Phase 5 | Phase 5 |
 | Q-10 | In-game title | Branding | Decide before Phase 4 title art | Phase 4 |
-| Q-11 | Middle-pinch (Back) opens a system "Restart/Resume" menu | May clash with our Escape = Pause | Observed in Phase 0; Phase 2 pause UI must reconcile with the system overlay | Phase 2 |
+| Q-11 | Middle-pinch (Back) opens the fixed system "universal Web App menu" (Restart · Resume · Skip Level) | Could clash with an app-drawn pause overlay | **Resolved (Phase 2):** the system menu *is* the pause — the app reacts to `pause`/`resume`/`stop` lifecycle events and draws no pause overlay; "Quit to map" is an in-app HUD button | ✓ |
 
 ---
 
