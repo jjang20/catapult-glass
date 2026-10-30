@@ -228,24 +228,30 @@ stateDiagram-v2
     Gameplay --> ResultOverlay : win / fail
     ResultOverlay --> Gameplay : Retry / Next zone
     ResultOverlay --> ConquestMap : Map
-    Gameplay --> ConquestMap : Quit to map (HUD button)
+    Gameplay --> ConquestMap : Skip Level (system menu)
     ConquestMap --> Title : Escape
 ```
 
 - **Title**: game logo + two options: **Continue** (focused by default — one pinch from
-  launch to gameplay) and **Levels**.
+  launch to gameplay) and **Levels**. Once every zone is conquered, **Continue opens the
+  conquest map** instead (there is no "first unconquered zone" left).
 - **Conquest map** (level select): top-down pixel-art castle with concentric zones.
   Conquered zones show the player's banner + earned stars; the next zone pulses;
   locked inner zones are dimmed. D-pad navigable in a fixed focus order (outer → inner).
 - **Gameplay**: canvas scene with substates Aim → Flight → Settle → Result.
-- **Result overlay**: stars animation, score, Retry / Next / Map.
+- **Result overlay**: stars animation, score, Retry / Next / Map. Default focus: **win →
+  Next**, **loss → Retry**. "Next" is **hidden** (not dimmed) when it doesn't apply: on a loss,
+  and after the final zone (where only Retry / Map show).
 - **Pause (platform-native)**: on the glasses the middle-pinch raises the fixed system
   **"universal Web App menu" (Restart · Resume · Skip Level)** — the app draws **no** pause
   overlay; it reacts to the platform **`pause` / `resume` / `stop`** lifecycle events (freeze the
   loop on `pause`, continue on `resume`, reset the zone on `stop`). Desktop mirrors this via the
-  **Page Visibility API** (tab switch) for an identical code path. **"Quit to map"** — the one
-  action the system menu lacks — is an in-app **focusable HUD button** (pinch/Enter), never bound
-  to Back.
+  **Page Visibility API** (tab switch) for an identical code path. **Leaving a zone mid-round:**
+  there is **no in-app quit control during aiming** (every swipe and pinch is already bound — §3.3).
+  The system menu's **"Skip Level" is treated as "leave the zone → conquest map"**, and the result
+  overlay's **Map** button covers leaving after a round. *Fallback if on-device testing shows
+  "Skip Level" gives no usable event:* an "edge overflow" Quit control (one swipe ↑ past the 80°
+  angle limit focuses it; requires a confirm).
 
 ### 4.2 Gameplay HUD
 
@@ -320,15 +326,16 @@ docs/                       # this spec's companions
 
 Two layers; gameplay code never reads DOM events directly.
 
-- **Sources** translate raw DOM events → semantic actions.
+- **Sources** translate raw DOM events → generic intents.
   - `KeyboardSource` — serves desktop dev AND the Neural Band (the band emits real
-    key events; one source covers both — deliberate simplification).
-  - Future `TwistSource` — plugs in beside it if Phase 0 finds usable twist events.
-- **Actions** consumed by screens/game:
-  - Menus: `NAV_UP` `NAV_DOWN` `NAV_LEFT` `NAV_RIGHT` `SELECT` `BACK`
-  - Aim phase: `ANGLE_INC` `ANGLE_DEC` `POWER_INC` `POWER_DEC` `FIRE` `PAUSE`
-  - The active screen owns the action→meaning mapping; sources know nothing about
-    gameplay.
+    key events; one source covers both — deliberate simplification). (A `TwistSource`
+    was planned but dropped — Phase 0 found no app-visible twist events, §2.2.)
+- **Intents** (six, generic): `UP` `DOWN` `LEFT` `RIGHT` `CONFIRM` (Enter / pinch)
+  `CANCEL` (Escape / middle-pinch).
+  - The active screen owns the intent→meaning mapping (e.g. `UP` = raise angle while
+    aiming, move focus up in a menu); sources know nothing about gameplay.
+  - There is **no `PAUSE` intent** — pause is platform-owned (§4.1). `CANCEL` means
+    "Back" in menus/overlays only and does nothing during gameplay.
 - Contract: actions fire on `keydown`; `repeat` keydowns pass through flagged
   (consumers decide whether to honor); **nothing may depend on `keyup`**.
 
@@ -348,13 +355,18 @@ export default {
     { material: "stone", x: 140, y: 150, w: 24, h: 8, angle: 0 },
     { material: "tnt",   x: 150, y: 170, w: 10, h: 10 },
   ],
-  targets: [ { type: "defender", x: 150, y: 176, r: 6 } ],   // type: "defender" | "king"
+  targets: [ { type: "defender", x: 150, y: 174, w: 10, h: 12 } ], // "defender" | "king"
   statics: [ { x: 100, y: 184, w: 100, h: 16 } ],            // ground extras, ramps
 };
 ```
 
 Coordinates are **logical 200×200 space, origin top-left, y grows downward** (matches
-both canvas and matter.js — stated explicitly to prevent y-axis confusion).
+both canvas and matter.js — stated explicitly to prevent y-axis confusion). `x`/`y` are
+**centers**.
+
+Targets (defenders / King) use an upright **box hitbox** (`w`/`h`) — the invisible physics
+shape — so they share the blocks' damage code. Their *visible* look is a character sprite
+(Phase 3) drawn over that box and need not be rectangular.
 
 ### 5.6 Persistence
 
@@ -381,7 +393,8 @@ behavior on the glasses webview is open question Q-7).
   7. Battery/thermal over a 10-minute session
   8. System pinch menu: which items appear for our app, and what the `pause`/`resume`/`stop`
      lifecycle events (and "Restart" / "Skip Level") actually deliver — confirm pause/resume
-     freezes and resumes the loop, and "Quit to map" works as a HUD button
+     freezes and resumes the loop, and that "Skip Level" delivers an event we can map to
+     "leave the zone → conquest map" (if not, build the edge-overflow Quit fallback, §4.1)
 
 ---
 
@@ -408,7 +421,7 @@ phone/desktop as supported play targets (dev-only).
 | Q-8 | Distribution/review timeline (URL-only today) | Reach | None needed for v1; track | — |
 | Q-9 | Toolkit/platform API drift (young platform) | Breakage | Re-verify meta-tag requirements at Phase 5 | Phase 5 |
 | Q-10 | In-game title | Branding | Decide before Phase 4 title art | Phase 4 |
-| Q-11 | Middle-pinch (Back) opens the fixed system "universal Web App menu" (Restart · Resume · Skip Level) | Could clash with an app-drawn pause overlay | **Resolved (Phase 2):** the system menu *is* the pause — the app reacts to `pause`/`resume`/`stop` lifecycle events and draws no pause overlay; "Quit to map" is an in-app HUD button | ✓ |
+| Q-11 | Middle-pinch (Back) opens the fixed system "universal Web App menu" (Restart · Resume · Skip Level) | Could clash with an app-drawn pause overlay | **Resolved (Phase 2):** the system menu *is* the pause — the app reacts to `pause`/`resume`/`stop` lifecycle events and draws no pause overlay; mid-round exit = system "Skip Level" → map (no in-app quit while aiming) | ✓ |
 
 ---
 

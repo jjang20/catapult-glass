@@ -1,6 +1,7 @@
 # Phase 2 — Game systems: design & decision plan
 
-**Status:** interview complete — all 12 decisions (D1–D12) recorded. Ready for designer review.
+**Status:** interview complete — D1–D12 recorded, plus follow-up round D13–D18 (gaps found
+when cross-checking the plan against SPEC, issue #3 and the code). Ready to build.
 **Scope:** GitHub issue #3 ("Phase 2 — Game systems"): materials/damage + TNT,
 particle bursts, scoring/stars, level schema + loader, Title + Conquest-map screens,
 result overlay (pause is platform-native), persistence, debug params, and `node --test` units.
@@ -283,11 +284,12 @@ existing screen **stack** (`screens.js`) — push to enter, pop to go back, Esca
 
 **Question:** What is saved, how is it shaped, and what happens when storage fails?
 
-**Decision — what & shape:** a **single versioned JSON blob** under one `localStorage` key
-(e.g. `catapult-glass:save`), holding **only per-zone results** — best score and best stars:
+**Decision — what & shape:** a **single JSON blob** under one `localStorage` key, holding
+**only per-zone results** — best score and best stars. *(Key and shape superseded by **D16**:
+key `catapult-glass.v1`, version lives in the key name, per SPEC §5.6.)*
 
 ```json
-{ "version": 1, "zones": { "zone-01": { "bestScore": 7200, "stars": 3 } } }
+{ "zones": { "zone-01": { "bestScore": 7200, "stars": 3 } }, "settings": {} }
 ```
 
 **Unlock is derived, not stored:** zone N is unlocked once zone N−1 is conquered (stars ≥ 1);
@@ -338,7 +340,8 @@ events: **`pause`** → freeze the fixed-timestep loop and timers; **`resume`** 
 Visibility API** (`visibilitychange` / `document.hidden`) so the *same* code path drives
 pause/resume on both desktop and device (SPEC §2.2 parity).
 
-**Decision — "Quit to map":** the one action the system menu lacks becomes an in-app
+**Decision — "Quit to map":** *(superseded by **D13** — no in-app quit while aiming; kept
+here for history.)* The one action the system menu lacks becomes an in-app
 **focusable HUD control** (activated by confirm/Enter), reachable by D-pad — never bound to Back.
 Because the universal menu is **not extensible** from a web app, this HUD button is the *only*
 place "Quit to map" can live.
@@ -380,7 +383,8 @@ key · a unified PAUSE intent everywhere.
 is the **Back** action and is meaningful **only in menus and overlays** — Conquest map →
 Title, and dismiss the result overlay → map. **During gameplay, Back does nothing in our
 code:** pause is owned by the platform (system menu on glasses; Page Visibility on desktop —
-D10). There is **no dedicated `PAUSE` intent**. **"Quit to map"** is an in-app focusable HUD
+D10). There is **no dedicated `PAUSE` intent**. *(The next sentence is superseded by **D13**.)*
+**"Quit to map"** is an in-app focusable HUD
 control activated by **`CONFIRM`** (Enter), reachable by D-pad — never bound to Back.
 
 **Why:** truest to the real device (the OS owns Back/pause during play); avoids a dead,
@@ -426,6 +430,68 @@ import matter.js, so both the running game and the automatic checks can use them
 
 ---
 
+## Follow-up round (D13–D18)
+
+Found by cross-checking D1–D12 against SPEC, issue #3 and the Phase 1 code.
+
+### D13 — Leaving a zone mid-round (supersedes D10/D11 "Quit to map" HUD button)
+
+**Question:** SPEC/D10 put "Quit to map" on a focusable HUD button reached by D-pad — but while
+aiming, every swipe changes angle/power and pinch fires (`src/game.js`), so no gesture is free to
+move focus there.
+
+**Options weighed:** (A) no in-app quit while aiming — use the system menu's "Skip Level" + the
+result overlay's Map button · (B) "edge overflow" — one swipe ↑ past 80° focuses a Quit button
+(hidden; a stray pinch quits instead of firing, so needs a confirm) · (C) Escape opens our own
+quit prompt (rejected — the OS intercepts middle-pinch on device).
+
+**Decision:** **A.** No in-app quit control during aiming. "Skip Level" (system menu) → leave the
+zone → conquest map (already D10's handling); result overlay → Map. **B is the documented
+fallback** if the Phase 5 on-device check shows "Skip Level" gives no usable event.
+
+**Why:** keeps the five-gesture aim controls free of overloading (one gesture = one meaning);
+follows the platform's "system menu is the pause" model. **Trade-off:** depends on an unverified
+device behavior — mitigated by the ready fallback. SPEC §4.1, §5.7 and Q-11 updated.
+
+### D14 — Result overlay focus & the "Next" button
+
+**Decision:** default focus **win → Next** (one pinch to keep going), **loss → Retry**. "Next" is
+**hidden** — not dimmed — on a loss and after the final zone (then only Retry / Map).
+
+**Why:** fewest gestures on the common path; hiding beats dimming because dark-ish UI reads poorly
+on the additive display (SPEC §2.1). SPEC §4.1 updated.
+
+### D15 — "Continue" after the whole campaign is conquered
+
+**Decision:** **Continue opens the conquest map** (all banners + stars; pick a zone to replay).
+
+**Why:** there's no "first unconquered zone" left; the map doubles as a victory-lap view and lets
+the player choose. SPEC §4.1 updated.
+
+### D16 — Save key & shape (corrects D9)
+
+**Decision:** follow **SPEC §5.6**: key **`catapult-glass.v1`**, shape
+`{ zones: { [id]: { stars, bestScore } }, settings: {} }`. The version lives in the **key name** —
+a future format change = a new key (`.v2`) + optional migration. Everything else in D9 stands
+(save on win only, keep best, derive unlock, in-memory fallback). No SPEC change.
+
+### D17 — Target hitbox shape
+
+**Decision:** defenders and the King use an upright **box hitbox** (`w`/`h`, centers) — the
+invisible physics shape. Their visible look is a **character sprite** (Phase 3) drawn over it and
+need not be rectangular. **Why:** standing characters are tall and narrow (a box fits; a circle
+would roll away), boxes rest stably on blocks, and one shape = one damage code path (D7). SPEC §5.5
+example updated (`r` → `w/h`).
+
+### D18 — Input list in SPEC §5.4
+
+**Decision:** SPEC now matches the code and D11: six generic intents
+(`UP DOWN LEFT RIGHT CONFIRM CANCEL`); no `PAUSE`; `TwistSource` marked dropped. **Why:** the input
+source must stay ignorant of gameplay (SPEC §5.4) — screen-specific names like `ANGLE_INC` would
+require it to know which screen is active.
+
+---
+
 ## Interview queue (decision tree)
 
 - [x] **D1** — Impact measure → *Speed × mass*
@@ -440,3 +506,9 @@ import matter.js, so both the running game and the automatic checks can use them
 - [x] **D10** — Result / Pause overlays → *Result = our overlay; pause = platform lifecycle (system menu); resolves Q-11*
 - [x] **D11** — Input intents → *no new intents; Back = menus/overlays only; pause is platform-native*
 - [x] **D12** — Debug params & tests → *URL options per SPEC §5.7; auto-check pure math/scoring/schema, play-test the feel*
+- [x] **D13** — Mid-round exit → *no in-app quit while aiming; system "Skip Level" → map; edge-overflow Quit as fallback*
+- [x] **D14** — Result overlay → *win focuses Next, loss focuses Retry; Next hidden when n/a*
+- [x] **D15** — Continue when all conquered → *opens the conquest map*
+- [x] **D16** — Save format → *SPEC's `catapult-glass.v1`, version in key name*
+- [x] **D17** — Target hitbox → *upright box (w/h); character art drawn over it*
+- [x] **D18** — SPEC §5.4 intents → *match code: 6 generic intents, no PAUSE*
